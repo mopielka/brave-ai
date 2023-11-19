@@ -2,6 +2,7 @@
   "dependencies": {
     "@types/node": "^20.8.8",
     "dotenv": "^16.3.1",
+    "nodejs-file-downloader": "^4.12.1",
     "openai": "^4.13.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"

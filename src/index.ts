@@ -28,6 +28,24 @@ const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
 
     await apiClient.submitAnswer(token, solution);
     console.info('The answer is correct, task completed.');
+  },
+
+  fetchTask: async (args: string[]): Promise<void> => {
+    const taskName = args[0];
+    if (!taskName) {
+      throw new Error('Task name not specified.');
+    }
+
+    const apiKey = getEnv('API_KEY');
+    const apiUrl = getEnv('API_URL');
+    const apiClient = getApiClient(apiUrl, apiKey);
+
+    const token = await apiClient.getTaskToken(taskName);
+    console.info('Token obtained successfully');
+
+    const taskResponsePayload = await apiClient.getTaskPayload(token);
+
+    console.info('The task is: ' + JSON.stringify(taskResponsePayload));
   }
 }
 
