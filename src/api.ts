@@ -27,10 +27,13 @@ export const getApiClient = (apiUrl: string, apiKey: string) => ({
     return data;
   },
 
-  submitAnswer: async (token: string, solution: string | (any[])): Promise<void> => {
+  submitAnswer: async (token: string, solution: string): Promise<void> => {
+    const body = `{"answer":${solution}}`;
+
+    console.log(body);
     const response = await fetch(`${apiUrl}/answer/${token}`, {
       method: 'POST',
-      body: JSON.stringify({answer: solution}),
+      body,
     });
 
     const data = (await response.json()) as ResponsePayload;

@@ -1,9 +1,11 @@
 import * as dotenv from 'dotenv';
 import {getEnv} from "./env";
 import {getApiClient} from "./api";
-import {generateSolution} from "./solver";
+import {gpt} from "./solver";
 
 dotenv.config();
+
+const SOLVE_MAX_RETRIES = 3;
 
 const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
   solve: async (args: string[]): Promise<void> => {
@@ -11,6 +13,8 @@ const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
     if (!taskName) {
       throw new Error('Task name not specified.');
     }
+
+    const additionalInstructions = args[1];
 
     const apiKey = getEnv('API_KEY');
     const apiUrl = getEnv('API_URL');
@@ -23,11 +27,33 @@ const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
 
     console.info('The task is: ' + JSON.stringify(taskResponsePayload));
 
-    const solution = await generateSolution(taskName, taskResponsePayload);
-    console.info('Calculated solution: ' + JSON.stringify(solution));
+    const answers: string[] = [];
+    const errors = [];
+    for (let i = 0; i <= SOLVE_MAX_RETRIES; i++) {
+      const solution = await gpt(
+        taskResponsePayload,
+        additionalInstructions,
+        answers,
+        errors,
+      );
+      console.info('Calculated solution: ' + solution);
+      if (!solution) {
+        throw new Error('Failed to generate solution');
+      }
+      answers.push(solution);
 
-    await apiClient.submitAnswer(token, solution);
-    console.info('The answer is correct, task completed.');
+      try {
+        await apiClient.submitAnswer(token, solution);
+        console.info('The answer is correct, task completed.');
+
+        return;
+      } catch (error) {
+        console.error(`Answer error: ${(error as Error).message}`);
+        errors.push((error as Error).message);
+      }
+    }
+
+    console.error(`Failed to generate correct solution after ${SOLVE_MAX_RETRIES + 1} attempts.`)
   }
 }
 
