@@ -1,9 +1,10 @@
 import * as dotenv from 'dotenv';
-import {getEnv} from "./env";
-import {getApiClient} from "./api";
-import {generateSolution} from "./solver";
 
 dotenv.config();
+
+import {api} from "./api";
+import {generateSolution} from "./solver";
+import {OpenAI} from "openai";
 
 const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
   solve: async (args: string[]): Promise<void> => {
@@ -12,21 +13,17 @@ const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
       throw new Error('Task name not specified.');
     }
 
-    const apiKey = getEnv('API_KEY');
-    const apiUrl = getEnv('API_URL');
-    const apiClient = getApiClient(apiUrl, apiKey);
-
-    const token = await apiClient.getTaskToken(taskName);
+    const token = await api.getTaskToken(taskName);
     console.info('Token obtained successfully');
 
-    const taskResponsePayload = await apiClient.getTaskPayload(token);
+    const taskResponsePayload = await api.getTaskPayload(token);
 
     console.info('The task is: ' + JSON.stringify(taskResponsePayload));
 
     const solution = await generateSolution(taskName, taskResponsePayload);
     console.info('Calculated solution: ' + JSON.stringify(solution));
 
-    await apiClient.submitAnswer(token, solution);
+    await api.submitAnswer(token, solution);
     console.info('The answer is correct, task completed.');
   },
 
@@ -36,17 +33,37 @@ const Commands: {[key: string]: (args: string[]) => Promise<void>} = {
       throw new Error('Task name not specified.');
     }
 
-    const apiKey = getEnv('API_KEY');
-    const apiUrl = getEnv('API_URL');
-    const apiClient = getApiClient(apiUrl, apiKey);
-
-    const token = await apiClient.getTaskToken(taskName);
+    const token = await api.getTaskToken(taskName);
     console.info('Token obtained successfully');
 
-    const taskResponsePayload = await apiClient.getTaskPayload(token);
+    const taskResponsePayload = await api.getTaskPayload(token);
 
     console.info('The task is: ' + JSON.stringify(taskResponsePayload));
-  }
+  },
+
+  solveLiar: async (): Promise<void> => {
+    const name = 'liar'
+    const token = await api.getTaskToken(name)
+
+    const question = 'Describe what is chess game about'
+
+    const { answer: apiAnswer } = await api.request('/task/' + token, { question })
+
+    const completion = await new OpenAI().chat.completions.create({
+      messages: [
+        { role: "system", content: 'You will receive a pair of question and answer. Your only role is to let user know if answer is actually related to the question. Say YES or NO and that is the end.' },
+        { role: "user", content: `Question: ${question}; answer: ${apiAnswer}` },
+      ],
+      model: 'gpt-4',
+    })
+
+    const solution = completion.choices[0].message.content
+
+    await api.submitAnswer(token, solution!)
+    console.info('The answer is correct, task completed.')
+  },
+
+
 }
 
 const main = async () => {

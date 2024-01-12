@@ -15,7 +15,7 @@ const GPT_SYSTEM_INSTRUCTIONS = `
   Please respond exclusively with what was requested in the task, for example:
   lemon, lime, tangerine`;
 
-const solvers: {[key: string]: (taskPayload: TaskPayload) => Promise<string|any[]|undefined>} = {
+const solvers: {[key: string]: (taskPayload: TaskPayload) => Promise<any>} = {
   gpt: async (taskPayload: TaskPayload): Promise<string|any[]|undefined> => {
     const completion = await new OpenAI().chat.completions.create({
       messages: [
@@ -73,10 +73,168 @@ const solvers: {[key: string]: (taskPayload: TaskPayload) => Promise<string|any[
     });
 
     return transcriptions.text;
+  },
+  functions: async (taskPayload: TaskPayload) => {
+    return {
+      "name": "addUser",
+      "description": "adds a user",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "the name"
+          },
+          "surname": {
+            "type": "string",
+            "description": "the last name"
+          },
+          "year": {
+            "type": "number",
+            "description": "the year of birth"
+          },
+        }
+      }
+    };
+  },
+  google: async () => {
+    return process.env.MY_API_BASE_URL + '/google';
+  },
+  ownapi: async () => {
+    return process.env.MY_API_BASE_URL + '/ownapi';
+  },
+  ownapipro: async () => {
+    return process.env.MY_API_BASE_URL + '/ownapipro';
+  },
+  md2html: async () => {
+    return process.env.MY_API_BASE_URL + '/md2html';
+  },
+  gnome: async (taskPayload: TaskPayload) => {
+    const completion = await new OpenAI().chat.completions.create({
+      messages: [
+        { role: "system", content: GPT_SYSTEM_INSTRUCTIONS },
+        {
+          role: "user",
+          content: [
+            {
+              type: 'text',
+              'text': 'Tell me the color of attached gnome hat. This must be just one word for a color in Polish language. If the image doesnt seem to be what expected, say: ERROR'
+            },
+            { type: 'image_url', image_url: taskPayload.url },
+          ]
+        }
+      ],
+      model: 'gpt-4-vision-preview',
+    })
+
+    return completion.choices[0].message.content ?? undefined
+  },
+  people: async (taskPayload: TaskPayload) => {
+    const dataset = await fetch(taskPayload.data).then(res => res.json())
+    const completionName = await new OpenAI().chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Your only job is to output first and last name found in the prompt' },
+        { role: 'user', content: taskPayload.question },
+      ],
+      model: DEFAULT_MODEL,
+    })
+
+    const [first, last] = (completionName.choices[0].message.content ?? '').split(' ');
+
+    const personData = (dataset as Record<string, string>[]).filter(v => v.imie === first && v.nazwisko === last);
+
+    const completion = await new OpenAI().chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Answer question based on provided JSON data' },
+        { role: 'user', content: `Question: ${taskPayload.question}; JSON data: ${JSON.stringify(personData)}` },
+      ],
+      model: DEFAULT_MODEL,
+    })
+
+    return completion.choices[0].message.content ?? undefined;
+  },
+  meme: async (taskPayload: TaskPayload) => {
+    const imageResult = await fetch('https://get.renderform.io/api/v2/render', {
+      method: 'POST',
+      body: JSON.stringify({
+        template: 'old-donkeys-arise-smoothly-1277',
+        data: {
+          'text.text': taskPayload.text,
+          'image.src': taskPayload.image,
+        }
+      }),
+      headers: {
+        'X-API-KEY': process.env.RENDERFORM_API_KEY!,
+        'Content-Type': 'application/json'
+      }
+    }).then(r => r.json())
+
+    console.log(imageResult);
+    return imageResult.href
+  },
+  toolsx: async (taskPayload: TaskPayload) => {
+    const theTools =  [
+      {
+        "type": "function",
+        "function": {
+          "name": "ToDo",
+          "description": "Add a task to the to do list",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA",
+              },
+              "format": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "The temperature unit to use. Infer this from the users location.",
+              },
+            },
+            "required": ["location", "format"],
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_n_day_weather_forecast",
+          "description": "Get an N-day weather forecast",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA",
+              },
+              "format": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "The temperature unit to use. Infer this from the users location.",
+              },
+              "num_days": {
+                "type": "integer",
+                "description": "The number of days to forecast",
+              }
+            },
+            "required": ["location", "format", "num_days"]
+          },
+        }
+      },
+    ];
+
+    const completionName = await new OpenAI().chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Your only job is to output first and last name found in the prompt' },
+        { role: 'user', content: taskPayload.question },
+      ],
+      model: DEFAULT_MODEL,
+    })
   }
 }
 
-export const generateSolution = async (taskName: string, taskPayload: TaskPayload): Promise<string|(any[])> => {
+export const generateSolution = async (taskName: string, taskPayload: TaskPayload): Promise<any> => {
   let solution: string | any[] | undefined = await solvers[taskName]?.(taskPayload);
 
   if (typeof solution === 'undefined') {
